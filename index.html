@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbit | Garde la trajectoire</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Outfit', sans-serif; background: #020408; color: #e2e8f0; -webkit-font-smoothing: antialiased; }
+        .dark-card { background: #0a0f1d; border: 1px solid #1e2533; border-radius: 28px; }
+        .accent-cyan { color: #00f2ff; }
+        .bg-cyan-neon { background: #00f2ff; box-shadow: 0 0 15px rgba(0, 242, 255, 0.5); }
+        
+        .app-icon-container { width: 50px; height: 50px; border-radius: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #161b29; box-shadow: 0 4px 20px rgba(0, 242, 255, 0.2); flex-shrink: 0; }
+        .app-icon-container img { width: 100%; height: 100%; object-fit: cover; }
+
+        #chart-wrapper { transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); cursor: pointer; z-index: 10; }
+        #chart-wrapper.expanded { transform: scale(3) translateY(40px); z-index: 100; position: relative; }
+        canvas { image-rendering: -webkit-optimize-contrast; }
+
+        .progress-container { background: #161b29; border-radius: 999px; height: 8px; overflow: hidden; }
+        .progress-bar { transition: width 1s ease-in-out; }
+        
+        .slogan { font-size: 8px; letter-spacing: 0.2em; color: #64748b; font-weight: 800; text-transform: uppercase; margin-top: 2px; }
+        input, textarea { background: transparent; outline: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .tab-btn.active { background: #00f2ff; color: #020408; font-weight: 900; }
+        
+        /* Zone de notes */
+        .notes-area { background: #020408; border: 1px solid #1e2533; border-radius: 18px; padding: 15px; font-size: 12px; line-height: 1.5; color: #94a3b8; width: 100%; min-height: 100px; resize: none; }
+        .notes-area:focus { border-color: #00f2ff; color: #e2e8f0; }
+    </style>
+</head>
+<body class="pb-20">
+
+    <div class="max-w-md mx-auto px-6">
+        <header class="flex items-center justify-between py-10">
+            <div class="flex items-center gap-4">
+                <div class="app-icon-container">
+                    <img src="logo.png" alt="Orbit">
+                </div>
+                <div>
+                    <h1 class="text-3xl font-black italic tracking-tighter uppercase leading-none">Orbit<span class="accent-cyan">.</span></h1>
+                    <p class="slogan">Garde la trajectoire</p>
+                </div>
+            </div>
+            <div id="chart-wrapper" onclick="this.classList.toggle('expanded')" class="flex-shrink-0">
+                <canvas id="savingsChart" style="width: 75px; height: 75px;"></canvas>
+            </div>
+        </header>
+
+        <div class="mb-8 pr-2">
+            <div class="flex justify-between text-[10px] font-black mb-2 tracking-widest uppercase italic text-slate-500">
+                <span>Progression Objectif</span>
+                <span id="percentLabel" class="accent-cyan">0%</span>
+            </div>
+            <div class="progress-container">
+                <div id="mainProgressBar" class="progress-bar bg-cyan-neon h-full w-0"></div>
+            </div>
+        </div>
+
+        <div class="dark-card p-8 mb-6 border-t-4 border-t-cyan-500 shadow-xl">
+            <p class="text-slate-500 text-[11px] font-bold uppercase tracking-[0.3em] text-center mb-2">Solde Actuel</p>
+            <h2 id="totalSavings" class="text-5xl font-black text-center mb-8 tracking-tighter">0,00 €</h2>
+            
+            <div class="flex gap-3 mb-4">
+                <input type="number" id="customInput" placeholder="Montant..." class="flex-1 bg-[#161b29] border border-slate-700 rounded-2xl px-5 font-bold text-cyan-400">
+                <button onclick="addSavings()" class="bg-cyan-neon px-6 py-4 rounded-2xl font-black text-slate-900 text-xs transition active:scale-90 uppercase">Ajouter</button>
+            </div>
+
+            <div class="flex justify-between items-center px-1">
+                <button onclick="toggleHistory()" class="text-slate-600 text-[9px] font-black uppercase tracking-widest hover:text-cyan-500 transition">Historique</button>
+                <button onclick="resetSavings()" class="text-red-900 text-[9px] font-black uppercase tracking-widest hover:text-red-500 transition">Réinitialiser</button>
+            </div>
+            <div id="historyList" class="overflow-hidden transition-all duration-300 space-y-2 mt-4" style="max-height: 0px;"></div>
+        </div>
+
+        <div class="flex gap-3 overflow-x-auto no-scrollbar mb-6 py-2" id="tabContainer"></div>
+        <div id="friendContent" class="space-y-6"></div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCR_Z6UcQRD-xV86us9ZFXe3yGOivzMm0Q",
+            authDomain: "budget-18-ans.firebaseapp.com",
+            projectId: "budget-18-ans",
+            storageBucket: "budget-18-ans.firebasestorage.app",
+            messagingSenderId: "171238611115",
+            appId: "1:171238611115:web:a54e2b06daa0a22294bfee"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        let currentFriend = "Nalya";
+        let myChart = null;
+
+        db.collection("config").doc("main").onSnapshot((doc) => {
+            if (doc.exists) updateUI(doc.data());
+        });
+
+        function updateUI(data) {
+            const savings = data.savings || 0;
+            const history = data.history || [];
+            const friends = data.friends || {};
+            
+            let totalNeeded = 0;
+            Object.values(friends).forEach(f => f.items.forEach(i => totalNeeded += parseFloat(i.cost || 0)));
+
+            document.getElementById('totalSavings').innerText = savings.toFixed(2).replace('.', ',') + " €";
+            const percent = totalNeeded > 0 ? Math.min(Math.round((savings / totalNeeded) * 100), 100) : 0;
+            document.getElementById('percentLabel').innerText = percent + "%";
+            document.getElementById('mainProgressBar').style.width = percent + "%";
+
+            // Historique
+            const hList = document.getElementById('historyList');
+            hList.innerHTML = history.slice().reverse().map((e, i) => `
+                <div class="flex justify-between items-center bg-[#101524] p-3 rounded-xl border border-white/5 text-[10px]">
+                    <span class="text-slate-500">${e.date}</span>
+                    <div class="flex items-center gap-3 font-bold text-cyan-400">
+                        +${e.amount}€ <button onclick="deleteHistoryEntry(${history.length-1-i})" class="text-red-900 font-black px-1">✕</button>
+                    </div>
+                </div>
+            `).join('') || '<p class="text-center text-[9px] text-slate-700 py-2">Historique vide</p>';
+
+            // Tabs
+            document.getElementById('tabContainer').innerHTML = Object.keys(friends).map(name => `
+                <button onclick="switchTab('${name}')" class="flex-shrink-0 px-6 py-3 tab-btn rounded-xl font-black text-[10px] uppercase tracking-tighter ${currentFriend === name ? 'active' : 'bg-[#0a0f1d] text-slate-500 border border-slate-800'}">
+                    ${name}
+                </button>
+            `).join('') + `<button onclick="addNewFriend()" class="px-5 py-3 bg-white/5 text-slate-500 rounded-xl font-bold border border-white/10">+</button>`;
+
+            const f = friends[currentFriend];
+            if(!f) return;
+            const fTotal = f.items.reduce((acc, i) => acc + parseFloat(i.cost || 0), 0);
+
+            document.getElementById('friendContent').innerHTML = `
+                <div class="dark-card p-6 border-l-4 border-l-cyan-500">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xl font-black italic uppercase">${currentFriend}</h3>
+                        <div class="text-right bg-cyan-500/10 px-3 py-1 rounded-lg">
+                            <p class="text-[8px] font-bold text-cyan-500 uppercase">Total</p>
+                            <p class="text-sm font-black text-white">${fTotal.toFixed(2)}€</p>
+                        </div>
+                    </div>
+                    <div class="space-y-3 mb-6">
+                        ${f.items.map((it, idx) => `
+                            <div class="flex items-center gap-3 bg-[#020408] p-4 rounded-2xl border border-white/5">
+                                <input type="text" value="${it.name}" onchange="updateItem('${currentFriend}', ${idx}, 'name', this.value)" class="flex-1 text-xs font-bold text-slate-300">
+                                <input type="number" value="${it.cost}" onchange="updateItem('${currentFriend}', ${idx}, 'cost', this.value)" class="w-14 text-right text-xs font-black text-cyan-400">
+                                <button onclick="deleteItem(${idx})" class="text-slate-800 hover:text-red-600 transition">✕</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button onclick="addItem()" class="w-full py-4 border-2 border-dashed border-slate-800/50 rounded-2xl text-[9px] font-black text-slate-600 uppercase hover:border-cyan-500 transition">+ Ajouter un frais</button>
+                </div>
+
+                <div class="dark-card p-6">
+                    <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 italic">Notes & Liens</h3>
+                    
+                    <textarea class="notes-area mb-6" placeholder="Notes perso (tailles, adresses, rappels...)" onchange="updateNotes('${currentFriend}', this.value)">${f.notes || ''}</textarea>
+
+                    <div class="space-y-2 mb-4">
+                        ${(f.links || []).map((l, idx) => `
+                            <div class="flex gap-2">
+                                <a href="${l.url}" target="_blank" class="flex-1 bg-white/5 hover:bg-cyan-500 hover:text-slate-950 p-4 rounded-xl text-[10px] font-black flex justify-between transition-all">
+                                    <span>${l.name}</span><span>↗</span>
+                                </a>
+                                <button onclick="deleteLink(${idx})" class="text-red-900 bg-red-900/5 px-4 rounded-xl">🗑️</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button onclick="addLink()" class="w-full py-3 bg-[#020408] rounded-xl text-[9px] font-bold text-slate-500 border border-slate-800 uppercase">+ Config Lien</button>
+                    <button onclick="deleteFriend('${currentFriend}')" class="w-full mt-10 text-[8px] text-red-950 font-black uppercase tracking-widest">Supprimer le dossier</button>
+                </div>
+            `;
+            updateChart(savings, totalNeeded);
+        }
+
+        // --- NOUVELLE FONCTION NOTES ---
+        async function updateNotes(fName, val) {
+            const docRef = db.collection("config").doc("main");
+            const doc = await docRef.get();
+            let friends = doc.data().friends;
+            friends[fName].notes = val;
+            await docRef.update({ friends });
+        }
+
+        function updateChart(saved, total) {
+            const ctx = document.getElementById('savingsChart').getContext('2d');
+            const ratio = window.devicePixelRatio || 2;
+            ctx.canvas.width = 80 * ratio; ctx.canvas.height = 80 * ratio;
+            ctx.scale(ratio, ratio);
+            if (myChart) myChart.destroy();
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [saved, Math.max(0.1, total - saved)],
+                        backgroundColor: ['#00f2ff', '#1e2533'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { cutout: '80%', responsive: false, maintainAspectRatio: true, plugins: { legend: { display: false }, tooltip: { enabled: true } } }
+            });
+        }
+
+        async function resetSavings() {
+            if(!confirm("Remettre le solde à 0€ ?")) return;
+            const docRef = db.collection("config").doc("main");
+            await docRef.update({ savings: 0, history: [] });
+        }
+
+        async function addSavings() {
+            const input = document.getElementById('customInput');
+            const val = parseFloat(input.value);
+            if (!val) return;
+            const docRef = db.collection("config").doc("main");
+            const doc = await docRef.get();
+            const data = doc.data();
+            const newH = data.history || [];
+            newH.push({ amount: val, date: new Date().toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'}) + ' ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) });
+            await docRef.update({ savings: (data.savings || 0) + val, history: newH });
+            input.value = '';
+        }
+
+        async function deleteHistoryEntry(idx) {
+            const docRef = db.collection("config").doc("main");
+            const doc = await docRef.get();
+            const data = doc.data();
+            const amount = data.history[idx].amount;
+            const newH = data.history.filter((_, i) => i !== idx);
+            await docRef.update({ savings: Math.max(0, (data.savings || 0) - amount), history: newH });
+        }
+
+        function toggleHistory() {
+            const list = document.getElementById('historyList');
+            list.style.maxHeight = list.style.maxHeight === '0px' ? '300px' : '0px';
+        }
+
+        async function updateItem(fName, idx, field, val) {
+            const docRef = db.collection("config").doc("main");
+            const doc = await docRef.get();
+            let friends = doc.data().friends;
+            friends[fName].items[idx][field] = field === 'cost' ? parseFloat(val || 0) : val;
+            docRef.update({ friends });
+        }
+
+        async function addItem() {
+            const docRef = db.collection("config").doc("main");
+            const doc = await docRef.get();
+            let friends = doc.data().friends;
+            friends[currentFriend].items.push({ name: "NEW", cost: 0 });
+            docRef.update({ friends });
+        }
+
+        async function addLink() {
+            const name = prompt("Nom :");
+            const url = prompt("Lien :");
+            if(!name || !url) return;
+            const docRef = db.collection("config").doc("main");
+            const doc = await docRef.get();
+            let friends = doc.data().friends;
+            if(!friends[currentFriend].links) friends[currentFriend].links = [];
+            friends[currentFriend].links.push({ name: name.toUpperCase(), url: url.startsWith('http') ? url : 'https://' + url });
+            docRef.update({ friends });
+        }
+
+        async function deleteItem(idx) {
+            const docRef = db.collection("config").doc("main");
+            const doc = await docRef.get();
+            let friends = doc.data().friends;
+            friends[currentFriend].items.splice(idx, 1);
+            docRef.update({ friends });
+        }
+
+        async function deleteLink(idx) {
+            const docRef = db.collection("config").doc("main");
+            const doc = await docRef.get();
+            let friends = doc.data().friends;
+            friends[currentFriend].links.splice(idx, 1);
+            docRef.update({ friends });
+        }
+
+        async function addNewFriend() {
+            const name = prompt("Nom ?");
+            if(!name) return;
+            const docRef = db.collection("config").doc("main");
+            const doc = await docRef.get();
+            let friends = doc.data().friends;
+            friends[name] = { date: "DATE...", items: [], links: [], notes: "" };
+            docRef.update({ friends });
+            currentFriend = name;
+        }
+
+        async function deleteFriend(name) {
+            if(!confirm(`SUPPRIMER ${name} ?`)) return;
+            const docRef = db.collection("config").doc("main");
+            const doc = await docRef.get();
+            let friends = doc.data().friends;
+            delete friends[name];
+            currentFriend = Object.keys(friends)[0] || "";
+            docRef.update({ friends });
+        }
+
+        function switchTab(name) {
+            currentFriend = name;
+            db.collection("config").doc("main").get().then(doc => updateUI(doc.data()));
+        }
+    </script>
+</body>
+</html>
