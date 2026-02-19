@@ -12,9 +12,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Orbit">
 
-    <link rel="icon" type="image/png" href="logo.png">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#020408">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -31,8 +28,7 @@
 
         #chart-wrapper { transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); cursor: pointer; z-index: 10; }
         #chart-wrapper.expanded { transform: scale(3) translateY(40px); z-index: 100; position: relative; }
-        canvas { image-rendering: -webkit-optimize-contrast; }
-
+        
         .progress-container { background: #161b29; border-radius: 999px; height: 8px; overflow: hidden; }
         .progress-bar { transition: width 1s ease-in-out; }
         
@@ -41,14 +37,30 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .tab-btn.active { background: #00f2ff; color: #020408; font-weight: 900; }
         
-        /* Zone de notes */
         .notes-area { background: #020408; border: 1px solid #1e2533; border-radius: 18px; padding: 15px; font-size: 12px; line-height: 1.5; color: #94a3b8; width: 100%; min-height: 100px; resize: none; }
-        .notes-area:focus { border-color: #00f2ff; color: #e2e8f0; }
+
+        /* Login Overlay */
+        #login-overlay { position: fixed; inset: 0; background: #020408; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px; }
     </style>
 </head>
 <body class="pb-20">
 
-    <div class="max-w-md mx-auto px-6">
+    <div id="login-overlay">
+        <div class="w-full max-w-xs text-center">
+            <div class="mb-8">
+                <h1 class="text-4xl font-black italic tracking-tighter">ORBIT<span class="accent-cyan">.</span></h1>
+                <p class="text-[9px] uppercase tracking-[0.4em] text-slate-500 font-bold mt-2">Votre espace privé</p>
+            </div>
+            <div class="space-y-4">
+                <input type="text" id="userInput" placeholder="Identifiant (ex: antonin)" class="w-full bg-[#0a0f1d] border border-slate-700 rounded-2xl px-6 py-4 text-center font-bold text-cyan-400 focus:border-cyan-500 uppercase">
+                <input type="password" id="passInput" placeholder="Mot de passe" class="w-full bg-[#0a0f1d] border border-slate-700 rounded-2xl px-6 py-4 text-center font-bold text-cyan-400 focus:border-cyan-500">
+                <button onclick="handleLogin()" class="w-full bg-cyan-neon py-4 rounded-2xl font-black text-slate-900 uppercase shadow-lg shadow-cyan-500/20 active:scale-95 transition">Se connecter / Créer</button>
+            </div>
+            <p class="text-[8px] text-slate-600 mt-6 px-4 uppercase font-bold leading-relaxed">Si l'identifiant n'existe pas, un nouveau compte sera créé avec ce mot de passe.</p>
+        </div>
+    </div>
+
+    <div id="main-content" class="hidden max-w-md mx-auto px-6">
         <header class="flex items-center justify-between py-10">
             <div class="flex items-center gap-4">
                 <div class="app-icon-container">
@@ -56,7 +68,7 @@
                 </div>
                 <div>
                     <h1 class="text-3xl font-black italic tracking-tighter uppercase leading-none">Orbit<span class="accent-cyan">.</span></h1>
-                    <p class="slogan">Garde la trajectoire</p>
+                    <p class="slogan" id="userDisplayName">Session active</p>
                 </div>
             </div>
             <div id="chart-wrapper" onclick="this.classList.toggle('expanded')" class="flex-shrink-0">
@@ -66,7 +78,7 @@
 
         <div class="mb-8 pr-2">
             <div class="flex justify-between text-[10px] font-black mb-2 tracking-widest uppercase italic text-slate-500">
-                <span>Progression Objectif</span>
+                <span>Objectif Global</span>
                 <span id="percentLabel" class="accent-cyan">0%</span>
             </div>
             <div class="progress-container">
@@ -75,17 +87,20 @@
         </div>
 
         <div class="dark-card p-8 mb-6 border-t-4 border-t-cyan-500 shadow-xl">
-            <p class="text-slate-500 text-[11px] font-bold uppercase tracking-[0.3em] text-center mb-2">Solde Actuel</p>
+            <p class="text-slate-500 text-[11px] font-bold uppercase tracking-[0.3em] text-center mb-2">Solde Épargné</p>
             <h2 id="totalSavings" class="text-5xl font-black text-center mb-8 tracking-tighter">0,00 €</h2>
             
-            <div class="flex gap-3 mb-4">
-                <input type="number" id="customInput" placeholder="Montant..." class="flex-1 bg-[#161b29] border border-slate-700 rounded-2xl px-5 font-bold text-cyan-400">
-                <button onclick="addSavings()" class="bg-cyan-neon px-6 py-4 rounded-2xl font-black text-slate-900 text-xs transition active:scale-90 uppercase">AJT</button>
+            <div class="space-y-3 mb-4">
+                <div class="flex gap-3">
+                    <input type="number" id="customInput" placeholder="Montant..." class="flex-1 bg-[#161b29] border border-slate-700 rounded-2xl px-5 font-bold text-cyan-400">
+                    <button onclick="addSavings()" class="bg-cyan-neon px-6 py-4 rounded-2xl font-black text-slate-900 text-xs transition active:scale-90 uppercase italic">AJT</button>
+                </div>
+                <input type="text" id="sourceInput" placeholder="D'où vient l'argent ? (ex: Job d'été)" class="w-full bg-[#161b29]/50 border border-slate-800 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-400 italic">
             </div>
 
             <div class="flex justify-between items-center px-1">
-                <button onclick="toggleHistory()" class="text-slate-600 text-[9px] font-black uppercase tracking-widest hover:text-cyan-500 transition">Historique</button>
-                <button onclick="resetSavings()" class="text-red-900 text-[9px] font-black uppercase tracking-widest hover:text-red-500 transition">Réinitialiser</button>
+                <button onclick="toggleHistory()" class="text-slate-600 text-[9px] font-black uppercase tracking-widest">Historique</button>
+                <button onclick="logout()" class="text-slate-600 text-[9px] font-black uppercase tracking-widest">Déconnexion</button>
             </div>
             <div id="historyList" class="overflow-hidden transition-all duration-300 space-y-2 mt-4" style="max-height: 0px;"></div>
         </div>
@@ -95,6 +110,7 @@
     </div>
 
     <script>
+        // --- FIREBASE CONFIG ---
         const firebaseConfig = {
             apiKey: "AIzaSyCR_Z6UcQRD-xV86us9ZFXe3yGOivzMm0Q",
             authDomain: "budget-18-ans.firebaseapp.com",
@@ -106,18 +122,62 @@
         
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
-        let currentFriend = "Nalya";
+        
+        let currentUser = "";
+        let currentFriend = ""; 
         let myChart = null;
 
-        db.collection("config").doc("main").onSnapshot((doc) => {
-            if (doc.exists) updateUI(doc.data());
-        });
+        // --- AUTH LOGIC ---
+        async function handleLogin() {
+            const user = document.getElementById('userInput').value.trim().toLowerCase();
+            const pass = document.getElementById('passInput').value;
 
+            if(!user || !pass) { alert("Remplit tout !"); return; }
+
+            const userRef = db.collection("users").doc(user);
+            const doc = await userRef.get();
+
+            if(doc.exists) {
+                if(doc.data().password === pass) {
+                    startSession(user);
+                } else {
+                    alert("Mauvais mot de passe !");
+                }
+            } else {
+                if(confirm("Créer un nouveau compte pour " + user + " ?")) {
+                    await userRef.set({
+                        password: pass,
+                        savings: 0,
+                        history: [],
+                        friends: {}
+                    });
+                    startSession(user);
+                }
+            }
+        }
+
+        function startSession(userId) {
+            currentUser = userId;
+            document.getElementById('login-overlay').style.display = 'none';
+            document.getElementById('main-content').classList.remove('hidden');
+            document.getElementById('userDisplayName').innerText = "Session : " + userId.toUpperCase();
+            
+            // Écoute en temps réel des données de l'utilisateur
+            db.collection("users").doc(currentUser).onSnapshot((doc) => {
+                if (doc.exists) updateUI(doc.data());
+            });
+        }
+
+        function logout() { location.reload(); }
+
+        // --- UI CORE ---
         function updateUI(data) {
             const savings = data.savings || 0;
             const history = data.history || [];
             const friends = data.friends || {};
             
+            if(!currentFriend && Object.keys(friends).length > 0) currentFriend = Object.keys(friends)[0];
+
             let totalNeeded = 0;
             Object.values(friends).forEach(f => f.items.forEach(i => totalNeeded += parseFloat(i.cost || 0)));
 
@@ -129,13 +189,16 @@
             // Historique
             const hList = document.getElementById('historyList');
             hList.innerHTML = history.slice().reverse().map((e, i) => `
-                <div class="flex justify-between items-center bg-[#101524] p-3 rounded-xl border border-white/5 text-[10px]">
-                    <span class="text-slate-500">${e.date}</span>
-                    <div class="flex items-center gap-3 font-bold text-cyan-400">
-                        +${e.amount}€ <button onclick="deleteHistoryEntry(${history.length-1-i})" class="text-red-900 font-black px-1">✕</button>
+                <div class="bg-[#101524] p-3 rounded-xl border border-white/5 text-[10px]">
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-500">${e.date}</span>
+                        <div class="flex items-center gap-3 font-bold text-cyan-400">
+                            +${e.amount}€ <button onclick="deleteHistoryEntry(${history.length-1-i})" class="text-red-900 font-black">✕</button>
+                        </div>
                     </div>
+                    ${e.note ? `<p class="text-slate-400 italic opacity-60 mt-1">${e.note}</p>` : ''}
                 </div>
-            `).join('') || '<p class="text-center text-[9px] text-slate-700 py-2">Historique vide</p>';
+            `).join('') || '<p class="text-center text-[9px] text-slate-700 py-2">Aucun historique</p>';
 
             // Tabs
             document.getElementById('tabContainer').innerHTML = Object.keys(friends).map(name => `
@@ -145,7 +208,12 @@
             `).join('') + `<button onclick="addNewFriend()" class="px-5 py-3 bg-white/5 text-slate-500 rounded-xl font-bold border border-white/10">+</button>`;
 
             const f = friends[currentFriend];
-            if(!f) return;
+            if(!f) {
+                document.getElementById('friendContent').innerHTML = `<p class="text-center text-slate-600 text-[10px] py-10 uppercase tracking-widest font-bold">Appuyez sur + pour créer un dossier de dépenses</p>`;
+                updateChart(savings, totalNeeded);
+                return;
+            };
+
             const fTotal = f.items.reduce((acc, i) => acc + parseFloat(i.cost || 0), 0);
 
             document.getElementById('friendContent').innerHTML = `
@@ -166,14 +234,12 @@
                             </div>
                         `).join('')}
                     </div>
-                    <button onclick="addItem()" class="w-full py-4 border-2 border-dashed border-slate-800/50 rounded-2xl text-[9px] font-black text-slate-600 uppercase hover:border-cyan-500 transition">+ Ajouter un frais</button>
+                    <button onclick="addItem()" class="w-full py-4 border-2 border-dashed border-slate-800/50 rounded-2xl text-[9px] font-black text-slate-600 uppercase">+ Ajouter un frais</button>
                 </div>
 
                 <div class="dark-card p-6">
                     <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 italic">Notes & Liens</h3>
-                    
-                    <textarea class="notes-area mb-6" placeholder="Notes perso (tailles, adresses, rappels...)" onchange="updateNotes('${currentFriend}', this.value)">${f.notes || ''}</textarea>
-
+                    <textarea class="notes-area mb-6" placeholder="Notes perso..." onchange="updateNotes('${currentFriend}', this.value)">${f.notes || ''}</textarea>
                     <div class="space-y-2 mb-4">
                         ${(f.links || []).map((l, idx) => `
                             <div class="flex gap-2">
@@ -191,13 +257,60 @@
             updateChart(savings, totalNeeded);
         }
 
-        // --- NOUVELLE FONCTION NOTES ---
-        async function updateNotes(fName, val) {
-            const docRef = db.collection("config").doc("main");
+        // --- ACTIONS ---
+        async function addSavings() {
+            const input = document.getElementById('customInput');
+            const sourceInput = document.getElementById('sourceInput');
+            const val = parseFloat(input.value);
+            const note = sourceInput.value;
+            if (!val) return;
+
+            const docRef = db.collection("users").doc(currentUser);
+            const doc = await docRef.get();
+            const data = doc.data();
+            const newH = data.history || [];
+            
+            newH.push({ 
+                amount: val, 
+                note: note,
+                date: new Date().toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'}) + ' ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) 
+            });
+
+            await docRef.update({ savings: (data.savings || 0) + val, history: newH });
+            input.value = '';
+            sourceInput.value = '';
+        }
+
+        async function updateItem(fName, idx, field, val) {
+            const docRef = db.collection("users").doc(currentUser);
             const doc = await docRef.get();
             let friends = doc.data().friends;
-            friends[fName].notes = val;
+            friends[fName].items[idx][field] = field === 'cost' ? parseFloat(val || 0) : val;
+            docRef.update({ friends });
+        }
+
+        async function addItem() {
+            const docRef = db.collection("users").doc(currentUser);
+            const doc = await docRef.get();
+            let friends = doc.data().friends;
+            friends[currentFriend].items.push({ name: "NOUVEAU", cost: 0 });
+            docRef.update({ friends });
+        }
+
+        async function addNewFriend() {
+            const name = prompt("Nom du dossier ?");
+            if(!name) return;
+            const docRef = db.collection("users").doc(currentUser);
+            const doc = await docRef.get();
+            let friends = doc.data().friends || {};
+            friends[name] = { items: [], links: [], notes: "" };
             await docRef.update({ friends });
+            currentFriend = name;
+        }
+
+        function toggleHistory() {
+            const list = document.getElementById('historyList');
+            list.style.maxHeight = (list.style.maxHeight === '0px' || !list.style.maxHeight) ? '400px' : '0px';
         }
 
         function updateChart(saved, total) {
@@ -215,31 +328,21 @@
                         borderWidth: 0
                     }]
                 },
-                options: { cutout: '80%', responsive: false, maintainAspectRatio: true, plugins: { legend: { display: false }, tooltip: { enabled: true } } }
+                options: { cutout: '80%', responsive: false, maintainAspectRatio: true, plugins: { legend: { display: false } } }
             });
         }
 
-        async function resetSavings() {
-            if(!confirm("Remettre le solde à 0€ ?")) return;
-            const docRef = db.collection("config").doc("main");
-            await docRef.update({ savings: 0, history: [] });
-        }
-
-        async function addSavings() {
-            const input = document.getElementById('customInput');
-            const val = parseFloat(input.value);
-            if (!val) return;
-            const docRef = db.collection("config").doc("main");
+        // Fonctions utilitaires manquantes (identiques au précédent mais adaptées au currentUser)
+        async function updateNotes(fName, val) {
+            const docRef = db.collection("users").doc(currentUser);
             const doc = await docRef.get();
-            const data = doc.data();
-            const newH = data.history || [];
-            newH.push({ amount: val, date: new Date().toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'}) + ' ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) });
-            await docRef.update({ savings: (data.savings || 0) + val, history: newH });
-            input.value = '';
+            let friends = doc.data().friends;
+            friends[fName].notes = val;
+            await docRef.update({ friends });
         }
 
         async function deleteHistoryEntry(idx) {
-            const docRef = db.collection("config").doc("main");
+            const docRef = db.collection("users").doc(currentUser);
             const doc = await docRef.get();
             const data = doc.data();
             const amount = data.history[idx].amount;
@@ -247,24 +350,11 @@
             await docRef.update({ savings: Math.max(0, (data.savings || 0) - amount), history: newH });
         }
 
-        function toggleHistory() {
-            const list = document.getElementById('historyList');
-            list.style.maxHeight = list.style.maxHeight === '0px' ? '300px' : '0px';
-        }
-
-        async function updateItem(fName, idx, field, val) {
-            const docRef = db.collection("config").doc("main");
+        async function deleteItem(idx) {
+            const docRef = db.collection("users").doc(currentUser);
             const doc = await docRef.get();
             let friends = doc.data().friends;
-            friends[fName].items[idx][field] = field === 'cost' ? parseFloat(val || 0) : val;
-            docRef.update({ friends });
-        }
-
-        async function addItem() {
-            const docRef = db.collection("config").doc("main");
-            const doc = await docRef.get();
-            let friends = doc.data().friends;
-            friends[currentFriend].items.push({ name: "NEW", cost: 0 });
+            friends[currentFriend].items.splice(idx, 1);
             docRef.update({ friends });
         }
 
@@ -272,7 +362,7 @@
             const name = prompt("Nom :");
             const url = prompt("Lien :");
             if(!name || !url) return;
-            const docRef = db.collection("config").doc("main");
+            const docRef = db.collection("users").doc(currentUser);
             const doc = await docRef.get();
             let friends = doc.data().friends;
             if(!friends[currentFriend].links) friends[currentFriend].links = [];
@@ -280,36 +370,17 @@
             docRef.update({ friends });
         }
 
-        async function deleteItem(idx) {
-            const docRef = db.collection("config").doc("main");
-            const doc = await docRef.get();
-            let friends = doc.data().friends;
-            friends[currentFriend].items.splice(idx, 1);
-            docRef.update({ friends });
-        }
-
         async function deleteLink(idx) {
-            const docRef = db.collection("config").doc("main");
+            const docRef = db.collection("users").doc(currentUser);
             const doc = await docRef.get();
             let friends = doc.data().friends;
             friends[currentFriend].links.splice(idx, 1);
             docRef.update({ friends });
         }
 
-        async function addNewFriend() {
-            const name = prompt("Nom ?");
-            if(!name) return;
-            const docRef = db.collection("config").doc("main");
-            const doc = await docRef.get();
-            let friends = doc.data().friends;
-            friends[name] = { date: "DATE...", items: [], links: [], notes: "" };
-            docRef.update({ friends });
-            currentFriend = name;
-        }
-
         async function deleteFriend(name) {
             if(!confirm(`SUPPRIMER ${name} ?`)) return;
-            const docRef = db.collection("config").doc("main");
+            const docRef = db.collection("users").doc(currentUser);
             const doc = await docRef.get();
             let friends = doc.data().friends;
             delete friends[name];
@@ -319,7 +390,7 @@
 
         function switchTab(name) {
             currentFriend = name;
-            db.collection("config").doc("main").get().then(doc => updateUI(doc.data()));
+            db.collection("users").doc(currentUser).get().then(doc => updateUI(doc.data()));
         }
     </script>
 </body>
