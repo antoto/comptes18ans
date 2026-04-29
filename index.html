@@ -52,7 +52,7 @@
                 <p class="text-[9px] uppercase tracking-[0.4em] text-slate-500 font-bold mt-2">Votre espace privé</p>
             </div>
             <div class="space-y-4">
-                <input type="text" id="userInput" placeholder="Identifiant (ex: antonin)" class="w-full bg-[#0a0f1d] border border-slate-700 rounded-2xl px-6 py-4 text-center font-bold text-cyan-400 focus:border-cyan-500 uppercase">
+                <input type="text" id="userInput" placeholder="Identifiant (ex: prénom)" class="w-full bg-[#0a0f1d] border border-slate-700 rounded-2xl px-6 py-4 text-center font-bold text-cyan-400 focus:border-cyan-500 uppercase">
                 <input type="password" id="passInput" placeholder="Mot de passe" class="w-full bg-[#0a0f1d] border border-slate-700 rounded-2xl px-6 py-4 text-center font-bold text-cyan-400 focus:border-cyan-500">
                 <button onclick="handleLogin()" class="w-full bg-cyan-neon py-4 rounded-2xl font-black text-slate-900 uppercase shadow-lg shadow-cyan-500/20 active:scale-95 transition">Se connecter / Créer</button>
             </div>
@@ -162,7 +162,6 @@
             document.getElementById('main-content').classList.remove('hidden');
             document.getElementById('userDisplayName').innerText = "Session : " + userId.toUpperCase();
             
-            // Écoute en temps réel des données de l'utilisateur
             db.collection("users").doc(currentUser).onSnapshot((doc) => {
                 if (doc.exists) updateUI(doc.data());
             });
@@ -188,17 +187,19 @@
 
             // Historique
             const hList = document.getElementById('historyList');
-            hList.innerHTML = history.slice().reverse().map((e, i) => `
+            hList.innerHTML = history.slice().reverse().map((e, i) => {
+                const isDebit = e.amount < 0;
+                return `
                 <div class="bg-[#101524] p-3 rounded-xl border border-white/5 text-[10px]">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-500">${e.date}</span>
-                        <div class="flex items-center gap-3 font-bold text-cyan-400">
-                            +${e.amount}€ <button onclick="deleteHistoryEntry(${history.length-1-i})" class="text-red-900 font-black">✕</button>
+                        <div class="flex items-center gap-3 font-bold ${isDebit ? 'text-red-500' : 'text-cyan-400'}">
+                            ${isDebit ? '' : '+'}${e.amount}€ <button onclick="deleteHistoryEntry(${history.length-1-i})" class="text-red-900 font-black ml-1">✕</button>
                         </div>
                     </div>
-                    ${e.note ? `<p class="text-slate-400 italic opacity-60 mt-1">${e.note}</p>` : ''}
+                    ${e.note ? `<p class="text-slate-400 italic opacity-60 mt-1 uppercase">${e.note}</p>` : ''}
                 </div>
-            `).join('') || '<p class="text-center text-[9px] text-slate-700 py-2">Aucun historique</p>';
+            `}).join('') || '<p class="text-center text-[9px] text-slate-700 py-2">Aucun historique</p>';
 
             // Tabs
             document.getElementById('tabContainer').innerHTML = Object.keys(friends).map(name => `
@@ -227,10 +228,11 @@
                     </div>
                     <div class="space-y-3 mb-6">
                         ${f.items.map((it, idx) => `
-                            <div class="flex items-center gap-3 bg-[#020408] p-4 rounded-2xl border border-white/5">
-                                <input type="text" value="${it.name}" onchange="updateItem('${currentFriend}', ${idx}, 'name', this.value)" class="flex-1 text-xs font-bold text-slate-300">
-                                <input type="number" value="${it.cost}" onchange="updateItem('${currentFriend}', ${idx}, 'cost', this.value)" class="w-14 text-right text-xs font-black text-cyan-400">
-                                <button onclick="deleteItem(${idx})" class="text-slate-800 hover:text-red-600 transition">✕</button>
+                            <div class="flex items-center gap-2 bg-[#020408] p-3 rounded-2xl border border-white/5">
+                                <input type="text" value="${it.name}" onchange="updateItem('${currentFriend}', ${idx}, 'name', this.value)" class="flex-1 text-[11px] font-bold text-slate-300">
+                                <input type="number" value="${it.cost}" onchange="updateItem('${currentFriend}', ${idx}, 'cost', this.value)" class="w-12 text-right text-[11px] font-black text-cyan-400">
+                                <button onclick="payItem(${idx})" class="bg-cyan-900/20 text-cyan-400 text-[8px] font-black px-2 py-2 rounded-lg uppercase">Payer</button>
+                                <button onclick="deleteItem(${idx})" class="text-slate-800 hover:text-red-600 px-1">✕</button>
                             </div>
                         `).join('')}
                     </div>
@@ -297,6 +299,36 @@
             docRef.update({ friends });
         }
 
+        async function payItem(idx) {
+            const docRef = db.collection("users").doc(currentUser);
+            const doc = await docRef.get();
+            const data = doc.data();
+            let friends = data.friends;
+            const item = friends[currentFriend].items[idx];
+            const amountToPay = parseFloat(item.cost || 0);
+
+            if(data.savings < amountToPay) {
+                if(!confirm("Ton solde est inférieur au prix. Continuer quand même ?")) return;
+            }
+
+            // Mettre à jour l'historique
+            const newH = data.history || [];
+            newH.push({ 
+                amount: -amountToPay, 
+                note: `PAYÉ : ${item.name} (${currentFriend})`,
+                date: new Date().toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'}) + ' ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) 
+            });
+
+            // Supprimer l'item de la liste des dépenses
+            friends[currentFriend].items.splice(idx, 1);
+
+            await docRef.update({ 
+                savings: (data.savings || 0) - amountToPay, 
+                history: newH,
+                friends: friends
+            });
+        }
+
         async function addNewFriend() {
             const name = prompt("Nom du dossier ?");
             if(!name) return;
@@ -332,7 +364,6 @@
             });
         }
 
-        // Fonctions utilitaires manquantes (identiques au précédent mais adaptées au currentUser)
         async function updateNotes(fName, val) {
             const docRef = db.collection("users").doc(currentUser);
             const doc = await docRef.get();
@@ -347,6 +378,7 @@
             const data = doc.data();
             const amount = data.history[idx].amount;
             const newH = data.history.filter((_, i) => i !== idx);
+            // On ajuste le solde inversement au mouvement supprimé
             await docRef.update({ savings: Math.max(0, (data.savings || 0) - amount), history: newH });
         }
 
@@ -393,5 +425,14 @@
             db.collection("users").doc(currentUser).get().then(doc => updateUI(doc.data()));
         }
     </script>
+    <footer class="mt-12 mb-8 text-center">
+        <div class="h-[1px] w-20 bg-cyan-900/30 mx-auto mb-4"></div>
+        <p class="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">
+            Orbit <span class="text-cyan-400">System</span>
+        </p>
+        <p class="text-[8px] text-slate-700 uppercase mt-2 tracking-[0.2em] font-bold">
+            Développé par <span class="text-slate-500">Antonin Thorel</span>
+        </p>
+    </footer>
 </body>
 </html>
