@@ -216,16 +216,38 @@
             };
 
             const fTotal = f.items.reduce((acc, i) => acc + parseFloat(i.cost || 0), 0);
+            const allowance = parseFloat(f.allowance || 0);
+            const remainingAllowance = allowance - fTotal;
 
             document.getElementById('friendContent').innerHTML = `
                 <div class="dark-card p-6 border-l-4 border-l-cyan-500">
                     <div class="flex justify-between items-center mb-6">
                         <h3 class="text-xl font-black italic uppercase">${currentFriend}</h3>
                         <div class="text-right bg-cyan-500/10 px-3 py-1 rounded-lg">
-                            <p class="text-[8px] font-bold text-cyan-500 uppercase">Total</p>
+                            <p class="text-[8px] font-bold text-cyan-500 uppercase">Total Dépensé</p>
                             <p class="text-sm font-black text-white">${fTotal.toFixed(2)}€</p>
                         </div>
                     </div>
+
+                    <div class="bg-[#101524] p-4 rounded-2xl border border-white/5 mb-6 text-xs space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-slate-400 font-bold uppercase text-[9px] tracking-wider">Avance Reçue :</span>
+                            <div class="flex items-center gap-1">
+                                <input type="number" value="${allowance}" onchange="updateAllowance('${currentFriend}', this.value)" class="w-16 text-right font-black text-yellow-400 border-b border-dashed border-slate-600 focus:border-yellow-400" placeholder="0">
+                                <span class="text-yellow-400 font-bold">€</span>
+                            </div>
+                        </div>
+                        <div class="h-[1px] bg-white/5"></div>
+                        <div class="flex justify-between text-[10px] uppercase font-black">
+                            <span class="text-slate-500">Reste de l'avance :</span>
+                            <span class="${remainingAllowance >= 0 ? 'text-green-400' : 'text-red-400'}">${remainingAllowance.toFixed(2)} €</span>
+                        </div>
+                        <div class="flex justify-between text-[10px] uppercase font-black pt-1">
+                            <span class="text-cyan-400">À rembourser à la fin :</span>
+                            <span class="text-cyan-400">${fTotal.toFixed(2)} €</span>
+                        </div>
+                    </div>
+
                     <div class="space-y-3 mb-6">
                         ${f.items.map((it, idx) => `
                             <div class="flex items-center gap-2 bg-[#020408] p-3 rounded-2xl border border-white/5">
@@ -291,6 +313,14 @@
             docRef.update({ friends });
         }
 
+        async function updateAllowance(fName, val) {
+            const docRef = db.collection("users").doc(currentUser);
+            const doc = await docRef.get();
+            let friends = doc.data().friends;
+            friends[fName].allowance = parseFloat(val || 0);
+            await docRef.update({ friends });
+        }
+
         async function addItem() {
             const docRef = db.collection("users").doc(currentUser);
             const doc = await docRef.get();
@@ -335,7 +365,7 @@
             const docRef = db.collection("users").doc(currentUser);
             const doc = await docRef.get();
             let friends = doc.data().friends || {};
-            friends[name] = { items: [], links: [], notes: "" };
+            friends[name] = { items: [], links: [], notes: "", allowance: 0 };
             await docRef.update({ friends });
             currentFriend = name;
         }
@@ -378,7 +408,6 @@
             const data = doc.data();
             const amount = data.history[idx].amount;
             const newH = data.history.filter((_, i) => i !== idx);
-            // On ajuste le solde inversement au mouvement supprimé
             await docRef.update({ savings: Math.max(0, (data.savings || 0) - amount), history: newH });
         }
 
